@@ -13,6 +13,9 @@ Physical desk monitor for Xiaomi MiMo API token usage. Shows live credit and sub
 - **Expected usage bar** — shows where you *should* be based on billing cycle progress
 - **Color coding** — purple = under budget, red = over budget
 - Auto-refreshes every 5 minutes over WiFi
+- **Touch to refresh** — tap the screen to fetch fresh data instantly
+- **Smart retry** — exponential backoff (30s → 60s → 120s) on failures, with WiFi auto-reconnect
+- **Error timestamps** — every error shows [HH:MM] so you know when it happened
 - Clock synced via NTP
 
 ## Hardware You Need
@@ -24,7 +27,7 @@ Physical desk monitor for Xiaomi MiMo API token usage. Shows live credit and sub
 
 Search for: **"ESP32-2432S028R"** or **"Cheap Yellow Display"**
 
-Specs: 2.8" TFT (ILI9341), 320×240, ESP32-WROOM-32 (520KB SRAM, 4MB Flash), USB-C, capacitive touch (unused by this project).
+Specs: 2.8" TFT (ILI9341), 320×240, ESP32-WROOM-32 (520KB SRAM, 4MB Flash), USB-C, resistive touch (XPT2046).
 
 ## Setup Overview
 
@@ -235,6 +238,7 @@ The display shows:
 | **Burn rate** | Credits or dollars per hour |
 | **Balance** | Remaining USD credit |
 | **Last updated** | Timestamp |
+| **Touch** | Tap anywhere to refresh instantly |
 
 ---
 
@@ -292,7 +296,7 @@ No manual copy-paste needed. Requires Google Chrome on macOS as-is.
 | Problem | Fix |
 |---------|-----|
 | "WiFi failed — check config.h" | Check SSID/password. CYD only supports 2.4GHz. |
-| "Fetch failed — retrying..." | Check Supabase URL + anon key. Verify `mimo_current` table has data. |
+| "Fetch failed — retrying..." | Error now shows specifics (e.g. `[23:42] HTTP 401`). Check Supabase URL + anon key. Verify `mimo_current` table has data. Auto-retries with backoff. |
 | White/blank display | Power cycle. Backlight is on GPIO 21 (handled automatically). |
 | Cookie expired | Run `node scripts/refresh-cookies.js` (auto-extracts from Chrome), or manually: log in to [platform.xiaomimimo.com](https://platform.xiaomimimo.com), copy cookies, run `supabase secrets set XIAOMI_COOKIES="..."`. |
 | Upload fails | Hold BOOT button while PlatformIO connects. |
