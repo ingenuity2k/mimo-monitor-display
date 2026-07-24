@@ -195,6 +195,7 @@ static void createUI() {
 static void updateUI(const MiMoData &d) {
   if (!d.valid) {
     lv_label_set_text(lblStatus, d.error.c_str());
+    lv_obj_set_style_text_color(lblStatus, lv_color_hex(0x6e6e73), 0);
     forceRedraw();
     return;
   }
@@ -275,11 +276,15 @@ static void updateUI(const MiMoData &d) {
   snprintf(buf, sizeof(buf), "credit: $%.2f", d.balance);
   lv_label_set_text(lblBalance, buf);
 
-  // Status — format timestamp as dd.mm.yyyy hh:mm in Europe/Zurich
-  {
+  // Status — scraper error takes precedence, then normal timestamp
+  if (d.scraper_error.length() > 0) {
+    snprintf(buf, sizeof(buf), "TOKEN EXPIRED  %s", getTimeHHMM().c_str());
+    lv_label_set_text(lblStatus, buf);
+    lv_obj_set_style_text_color(lblStatus, lv_color_hex(0xff4444), 0);
+  } else {
+    lv_obj_set_style_text_color(lblStatus, lv_color_hex(0x6e6e73), 0);
     const char *s = d.last_updated.c_str();
     if (strlen(s) >= 19) {
-      // Parse UTC ISO 8601
       struct tm utc_tm = {};
       utc_tm.tm_year = atoi(s) - 1900;
       utc_tm.tm_mon  = atoi(s+5) - 1;
@@ -287,11 +292,9 @@ static void updateUI(const MiMoData &d) {
       utc_tm.tm_hour = atoi(s+11);
       utc_tm.tm_min  = atoi(s+14);
       utc_tm.tm_sec  = atoi(s+17);
-      // mktime treats input as local — set TZ to UTC temporarily
       setenv("TZ", "UTC0", 1);
       tzset();
       time_t epoch = mktime(&utc_tm);
-      // Restore Europe/Zurich
       setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
       tzset();
       struct tm *local = localtime(&epoch);
@@ -301,8 +304,8 @@ static void updateUI(const MiMoData &d) {
     } else {
       snprintf(buf, sizeof(buf), "Updated: %s", s);
     }
+    lv_label_set_text(lblStatus, buf);
   }
-  lv_label_set_text(lblStatus, buf);
 
   forceRedraw();
 }
@@ -407,7 +410,17 @@ void loop() {
   if (millis() - lastFetch >= interval) {
     lastFetch = millis();
 
-    // WiFi reconnect only on retry
+    // Periodic WiFi health check (not just on retry)
+    static uint32_t lastWifiCheck = 0;
+    if (millis() - lastWifiCheck > 30000) {
+      lastWifiCheck = millis();
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[WiFi] Health check: disconnected, reconnecting...");
+        wifiEnsure();
+      }
+    }
+
+    // WiFi reconnect on retry
     if (consecutiveFails > 0) {
       wifiEnsure();
     }

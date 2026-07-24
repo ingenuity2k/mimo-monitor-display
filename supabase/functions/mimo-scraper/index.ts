@@ -213,15 +213,23 @@ Deno.serve(async (_req) => {
 
     // Upsert current status
     const now = new Date().toISOString();
-    await supabaseUpsert(supabaseUrl, supabaseKey, "mimo_current", {
-      id: 1, last_scraped_at: now,
-      balance, currency, gift_balance: giftBalance, cash_balance: cashBalance,
-      plan_code: planCode, plan_name: planName, plan_expires_at: planExpiresAt,
-      auto_renew: autoRenew, credits_used: creditsUsed, credits_limit: creditsLimit,
-      credits_percent: creditsPercent, burn_rate_per_hour: burnRatePerHour,
-      estimated_hours_remaining: estimatedHoursRemaining, burn_type: burnType,
-      scrape_count: scrapeCount, updated_at: now,
-    }, "id");
+    if (errorMsg) {
+      // API failed — only update error + timestamp, preserve last known good data
+      await supabaseUpsert(supabaseUrl, supabaseKey, "mimo_current", {
+        id: 1, last_scraped_at: now, error: errorMsg,
+      }, "id");
+    } else {
+      // Success — write all fields, clear error
+      await supabaseUpsert(supabaseUrl, supabaseKey, "mimo_current", {
+        id: 1, last_scraped_at: now, error: null,
+        balance, currency, gift_balance: giftBalance, cash_balance: cashBalance,
+        plan_code: planCode, plan_name: planName, plan_expires_at: planExpiresAt,
+        auto_renew: autoRenew, credits_used: creditsUsed, credits_limit: creditsLimit,
+        credits_percent: creditsPercent, burn_rate_per_hour: burnRatePerHour,
+        estimated_hours_remaining: estimatedHoursRemaining, burn_type: burnType,
+        scrape_count: scrapeCount, updated_at: now,
+      }, "id");
+    }
 
     return new Response(JSON.stringify({
       ok: true,

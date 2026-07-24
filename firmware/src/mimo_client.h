@@ -14,6 +14,7 @@ struct MiMoData {
   String burn_type;     // "credits" or "balance"
   String last_updated;
   String plan_expires_at;
+  String scraper_error; // upstream error from scraper (e.g. token expired)
   String error;
   bool valid;
 };
@@ -83,6 +84,8 @@ MiMoData fetchMiMoData() {
   HTTPClient http;
   String url = String(SUPABASE_URL) + MIMO_ENDPOINT;
   http.begin(url);
+  http.setConnectTimeout(10000);  // 10s connect timeout
+  http.setTimeout(15000);         // 15s total timeout
   http.addHeader("apikey", SUPABASE_KEY);
   http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
 
@@ -114,6 +117,7 @@ MiMoData fetchMiMoData() {
   data.burn_type     = row["burn_type"] | "credits";
   data.last_updated  = row["updated_at"] | "unknown";
   data.plan_expires_at = row["plan_expires_at"] | "";
+  data.scraper_error = row["error"] | "";
 
   if (data.credits_limit > 0) {
     data.percent_used = (data.credits_used / data.credits_limit) * 100.0f;
