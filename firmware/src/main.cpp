@@ -40,6 +40,15 @@ static lv_obj_t *lblStatus, *barUsage, *lblBalance, *lblClock;
 static lv_obj_t *barExpected;
 static lv_timer_t *refrTimer = NULL;
 
+// WiFi timeout error state
+static lv_obj_t *pnlError = NULL;
+static lv_obj_t *lblErrTitle = NULL;
+static lv_obj_t *lblErrDetail = NULL;
+static lv_obj_t *lblErrAction = NULL;
+static bool errorStateVisible = false;
+static uint32_t wifiDownSince = 0;  // millis() when WiFi first went down, 0 = connected
+static const uint32_t WIFI_DOWN_TIMEOUT_MS = 5UL * 60UL * 1000UL;  // 5 minutes
+
 // Force LVGL to process invalidated areas (known LVGL 9 redraw bug)
 static void forceRedraw() {
   if (!refrTimer) refrTimer = lv_display_get_refr_timer(lvDisp);
@@ -187,6 +196,36 @@ static void createUI() {
   lv_obj_set_style_text_color(lblStatus, lv_color_hex(0x6e6e73), 0);
   lv_obj_set_style_text_font(lblStatus, &lv_font_montserrat_12, 0);
   lv_obj_align(lblStatus, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+  // Error overlay — hidden by default, shown when WiFi is down >5m
+  pnlError = lv_obj_create(scr);
+  lv_obj_set_size(pnlError, SCREEN_WIDTH - 20, 120);
+  lv_obj_align(pnlError, LV_ALIGN_CENTER, 0, 10);
+  lv_obj_set_style_bg_color(pnlError, lv_color_hex(0x1a1a1e), 0);
+  lv_obj_set_style_bg_opa(pnlError, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(pnlError, 1, 0);
+  lv_obj_set_style_border_color(pnlError, lv_color_hex(0xff4444), 0);
+  lv_obj_set_style_radius(pnlError, 8, 0);
+  lv_obj_set_style_pad_all(pnlError, 10, 0);
+  lv_obj_add_flag(pnlError, LV_OBJ_FLAG_HIDDEN);
+
+  lblErrTitle = lv_label_create(pnlError);
+  lv_label_set_text(lblErrTitle, "WiFi Disconnected");
+  lv_obj_set_style_text_color(lblErrTitle, lv_color_hex(0xff4444), 0);
+  lv_obj_set_style_text_font(lblErrTitle, &lv_font_montserrat_16, 0);
+  lv_obj_align(lblErrTitle, LV_ALIGN_TOP_MID, 0, 0);
+
+  lblErrDetail = lv_label_create(pnlError);
+  lv_label_set_text(lblErrDetail, "No connection for over 5 minutes");
+  lv_obj_set_style_text_color(lblErrDetail, lv_color_hex(0xa1a1a6), 0);
+  lv_obj_set_style_text_font(lblErrDetail, &lv_font_montserrat_12, 0);
+  lv_obj_align(lblErrDetail, LV_ALIGN_CENTER, 0, 0);
+
+  lblErrAction = lv_label_create(pnlError);
+  lv_label_set_text(lblErrAction, "Touch screen to reboot");
+  lv_obj_set_style_text_color(lblErrAction, lv_color_hex(0xc4b5fd), 0);
+  lv_obj_set_style_text_font(lblErrAction, &lv_font_montserrat_14, 0);
+  lv_obj_align(lblErrAction, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
 #endif
@@ -278,7 +317,7 @@ static void updateUI(const MiMoData &d) {
 
   // Status — scraper error takes precedence, then normal timestamp
   if (d.scraper_error.length() > 0) {
-    snprintf(buf, sizeof(buf), "TOKEN EXPIRED  %s", getTimeHHMM().c_str());
+    snprintf(buf, sizeof(buf), "[%s] TOKEN EXPIRED", getTimeHHMM().c_str());
     lv_label_set_text(lblStatus, buf);
     lv_obj_set_style_text_color(lblStatus, lv_color_hex(0xff4444), 0);
   } else {
@@ -338,6 +377,35 @@ static bool wifiOk = false;
 static bool touchActive = false;
 static uint32_t lastTouchFetch = 0;
 
+// ── Error state toggle ─────────────────────────────────────────────
+static void setErrorState(bool show) {
+  if (show == errorStateVisible) return;
+  errorStateVisible = show;
+
+  if (show) {
+    lv_obj_add_flag(lblCredits, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lblPercent, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(barUsage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lblRate, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lblBalance, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lblStatus, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(barExpected, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(pnlError, LV_OBJ_FLAG_HIDDEN);
+    Serial.println("[UI] Error state ON — WiFi down >5m");
+  } else {
+    lv_obj_clear_flag(lblCredits, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(lblPercent, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(barUsage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(lblRate, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(lblBalance, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(lblStatus, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(barExpected, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(pnlError, LV_OBJ_FLAG_HIDDEN);
+    Serial.println("[UI] Error state OFF — WiFi restored");
+  }
+  forceRedraw();
+}
+
 // ── Setup ────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
@@ -357,8 +425,9 @@ void setup() {
   // WiFi
   lv_label_set_text(lblStatus, "Connecting to WiFi...");
   forceRedraw();
-  bool wifiOk = wifiConnect();
+  wifiOk = wifiConnect();
   if (!wifiOk) {
+    wifiDownSince = millis();  // start timeout countdown now
     lv_label_set_text(lblStatus, "WiFi failed — check config.h");
     forceRedraw();
   } else {
@@ -387,23 +456,52 @@ void loop() {
   lv_timer_handler();
   updateClock();
 
+  // Track WiFi down time
+  if (WiFi.status() != WL_CONNECTED) {
+    if (wifiDownSince == 0) wifiDownSince = millis();
+    uint32_t downMs = millis() - wifiDownSince;
+    if (downMs >= WIFI_DOWN_TIMEOUT_MS && !errorStateVisible) {
+      char detail[64];
+      uint32_t downMin = downMs / 60000;
+      snprintf(detail, sizeof(detail), "No connection for %u minutes", (unsigned)downMin);
+      lv_label_set_text(lblErrDetail, detail);
+      setErrorState(true);
+    }
+  } else {
+    if (wifiDownSince != 0) {
+      wifiDownSince = 0;
+      if (errorStateVisible) setErrorState(false);
+    }
+  }
+
   uint32_t interval = (consecutiveFails > 0) ? retryDelay : REFRESH_INTERVAL_MS;
 
-  // Touch → immediate manual fetch
+  // Touch handling
   int16_t tx, ty;
   bool touched = _tft->getTouch(&tx, &ty);
   if (touched && !touchActive && (millis() - lastTouchFetch > TOUCH_COOLDOWN_MS)) {
-    Serial.println("[Touch] Manual fetch triggered");
-    lv_label_set_text(lblStatus, "Refreshing...");
-    forceRedraw();
-    lv_timer_handler();
-    delay(500);
     lastTouchFetch = millis();
-    lastFetch = millis();
-    consecutiveFails = 0;
-    retryDelay = 0;
-    MiMoData d = fetchMiMoData();
-    updateUI(d);
+
+    if (errorStateVisible) {
+      // Error state → reboot
+      Serial.println("[Touch] Rebooting...");
+      lv_label_set_text(lblErrAction, "Rebooting...");
+      forceRedraw();
+      delay(500);
+      ESP.restart();
+    } else {
+      // Normal → manual fetch
+      Serial.println("[Touch] Manual fetch triggered");
+      lv_label_set_text(lblStatus, "Refreshing...");
+      forceRedraw();
+      lv_timer_handler();
+      delay(500);
+      lastFetch = millis();
+      consecutiveFails = 0;
+      retryDelay = 0;
+      MiMoData d = fetchMiMoData();
+      updateUI(d);
+    }
   }
   touchActive = touched;
 

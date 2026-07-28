@@ -71,6 +71,9 @@ bool wifiEnsure() {
 }
 
 // Fetch current MiMo data from Supabase
+// Retries up to 3 times on failure. After repeated failures, resets WiFi.
+static int fetchConsecutiveFails = 0;
+
 MiMoData fetchMiMoData() {
   MiMoData data = {};
   data.valid = false;
@@ -81,24 +84,48 @@ MiMoData fetchMiMoData() {
     return data;
   }
 
-  HTTPClient http;
   String url = String(SUPABASE_URL) + MIMO_ENDPOINT;
-  http.begin(url);
-  http.setConnectTimeout(10000);  // 10s connect timeout
-  http.setTimeout(15000);         // 15s total timeout
-  http.addHeader("apikey", SUPABASE_KEY);
-  http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+  int code = 0;
+  String payload;
 
-  int code = http.GET();
-  if (code != 200) {
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    HTTPClient http;
+    http.begin(url);
+    http.setConnectTimeout(8000);
+    http.setTimeout(10000);
+    http.addHeader("apikey", SUPABASE_KEY);
+    http.addHeader("Authorization", String("Bearer ") + SUPABASE_KEY);
+
+    code = http.GET();
+    if (code == 200) {
+      payload = http.getString();
+      http.end();
+      break;
+    }
+
+    Serial.printf("[Fetch] HTTP %d (attempt %d/3)\n", code, attempt);
     data.error = "[" + getTimeHHMM() + "] HTTP " + String(code);
-    Serial.printf("[Fetch] HTTP %d\n", code);
     http.end();
+
+    if (attempt < 3) delay(1000 * attempt);  // backoff: 1s, 2s
+  }
+
+  if (code != 200) {
+    fetchConsecutiveFails++;
+    Serial.printf("[Fetch] Failed after 3 attempts (streak: %d)\n", fetchConsecutiveFails);
+
+    // After 3 consecutive full failures (9 total attempts), reset WiFi
+    if (fetchConsecutiveFails >= 3) {
+      Serial.println("[Fetch] Too many failures — resetting WiFi...");
+      WiFi.disconnect(true);
+      delay(500);
+      wifiConnect();
+      fetchConsecutiveFails = 0;
+    }
     return data;
   }
 
-  String payload = http.getString();
-  http.end();
+  fetchConsecutiveFails = 0;
 
   // Parse JSON array (first row)
   JsonDocument doc;

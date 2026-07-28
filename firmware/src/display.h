@@ -93,6 +93,7 @@ public:
       cfg.panel_width   = 320;
       cfg.panel_height  = 240;
       cfg.offset_rotation = 4;
+      cfg.rgb_order = true;  // Panel is RGB, not BGR
       _panel.config(cfg);
     }
     // Skip Light_PWM — LEDC conflicts on this board. Backlight driven manually.
