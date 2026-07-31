@@ -16,6 +16,10 @@ Physical desk monitor for Xiaomi MiMo API token usage. Shows live credit and sub
 - **Touch to refresh** — tap the screen to fetch fresh data instantly
 - **Smart retry** — exponential backoff (30s → 60s → 120s) on failures, with WiFi auto-reconnect
 - **Error timestamps** — every error shows [HH:MM] so you know when it happened
+- **Memory health monitoring** — preemptive reboot if heap fragmentation gets critical (largest block < 20KB)
+- **Heap stats display** — free memory + fragmentation ratio in footer, color-coded (blue/orange/red)
+- **Error view** — shows on repeated HTTP failures or WiFi down (touch to reboot)
+- **Periodic heap defrag** — coalesces free blocks every 10 fetches to slow fragmentation
 - Clock synced via NTP
 
 ## Hardware You Need
@@ -238,6 +242,7 @@ The display shows:
 | **Burn rate** | Credits or dollars per hour |
 | **Balance** | Remaining USD credit |
 | **Last updated** | Timestamp |
+| **Memory stats** | Free heap (KB) + fragmentation ratio, color-coded |
 | **Touch** | Tap anywhere to refresh instantly |
 
 ---
@@ -297,6 +302,7 @@ No manual copy-paste needed. Requires Google Chrome on macOS as-is.
 |---------|-----|
 | "WiFi failed — check config.h" | Check SSID/password. CYD only supports 2.4GHz. |
 | "Fetch failed — retrying..." | Error now shows specifics (e.g. `[23:42] HTTP 401`). Check Supabase URL + anon key. Verify `mimo_current` table has data. Auto-retries with backoff. |
+| Display shows error view | Repeated HTTP failures or WiFi down for 5+ min. Touch screen to reboot. Memory issues auto-reboot preemptively. |
 | White/blank display | Power cycle. Backlight is on GPIO 21 (handled automatically). |
 | Cookie expired | Run `node scripts/refresh-cookies.js` (auto-extracts from Chrome), or manually: log in to [platform.xiaomimimo.com](https://platform.xiaomimimo.com), copy cookies, run `supabase secrets set XIAOMI_COOKIES="..."`. |
 | Upload fails | Hold BOOT button while PlatformIO connects. |
