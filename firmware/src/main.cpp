@@ -38,6 +38,7 @@ static void lv_init_display() {
 static lv_obj_t *lblTitle, *lblCredits, *lblPercent, *lblRate;
 static lv_obj_t *lblStatus, *barUsage, *lblBalance, *lblClock;
 static lv_obj_t *barExpected;
+static lv_obj_t *lblMemFree, *lblMemFrag;
 static lv_timer_t *refrTimer = NULL;
 
 // WiFi timeout error state
@@ -106,12 +107,25 @@ static void createUI() {
   lv_obj_set_style_text_font(lblBalance, &lv_font_montserrat_16, 0);
   lv_obj_align(lblBalance, LV_ALIGN_CENTER, 0, 100);
 
-  // Status
+  // Status — bottom left
   lblStatus = lv_label_create(scr);
   lv_label_set_text(lblStatus, "Connecting...");
   lv_obj_set_style_text_color(lblStatus, lv_color_hex(0x6e6e73), 0);
-  lv_obj_set_style_text_font(lblStatus, &lv_font_montserrat_12, 0);
-  lv_obj_align(lblStatus, LV_ALIGN_BOTTOM_MID, 0, -15);
+  lv_obj_set_style_text_font(lblStatus, &lv_font_montserrat_10, 0);
+  lv_obj_align(lblStatus, LV_ALIGN_BOTTOM_LEFT, 15, -15);
+
+  // Memory stats — bottom right
+  lblMemFree = lv_label_create(scr);
+  lv_label_set_text(lblMemFree, "");
+  lv_obj_set_style_text_color(lblMemFree, lv_color_hex(0x3b82f6), 0);
+  lv_obj_set_style_text_font(lblMemFree, &lv_font_montserrat_10, 0);
+  lv_obj_align(lblMemFree, LV_ALIGN_BOTTOM_RIGHT, -30, -27);
+
+  lblMemFrag = lv_label_create(scr);
+  lv_label_set_text(lblMemFrag, "");
+  lv_obj_set_style_text_color(lblMemFrag, lv_color_hex(0x3b82f6), 0);
+  lv_obj_set_style_text_font(lblMemFrag, &lv_font_montserrat_10, 0);
+  lv_obj_align(lblMemFrag, LV_ALIGN_BOTTOM_RIGHT, -30, -15);
 
   // Clock
   lblClock = lv_label_create(scr);
@@ -166,6 +180,9 @@ static void createUI() {
   lv_obj_set_style_bg_opa(barExpected, LV_OPA_COVER, LV_PART_MAIN);
   lv_obj_set_style_bg_color(barExpected, lv_color_hex(0x3b1f6e), LV_PART_INDICATOR);
   lv_obj_set_style_bg_opa(barExpected, LV_OPA_COVER, LV_PART_INDICATOR);
+  lv_obj_set_style_border_width(barExpected, 1, 0);
+  lv_obj_set_style_border_color(barExpected, lv_color_hex(0x4a4a4e), 0);
+  lv_obj_set_style_border_opa(barExpected, LV_OPA_COVER, 0);
 
   barUsage = lv_bar_create(scr);
   lv_obj_set_size(barUsage, SCREEN_WIDTH - 40, 10);
@@ -190,12 +207,25 @@ static void createUI() {
   lv_obj_set_style_text_font(lblBalance, &lv_font_montserrat_14, 0);
   lv_obj_align(lblBalance, LV_ALIGN_CENTER, 0, 56);
 
-  // Status — bottom
+  // Status — bottom left
   lblStatus = lv_label_create(scr);
   lv_label_set_text(lblStatus, "Connecting...");
   lv_obj_set_style_text_color(lblStatus, lv_color_hex(0x6e6e73), 0);
-  lv_obj_set_style_text_font(lblStatus, &lv_font_montserrat_12, 0);
-  lv_obj_align(lblStatus, LV_ALIGN_BOTTOM_MID, 0, -8);
+  lv_obj_set_style_text_font(lblStatus, &lv_font_montserrat_10, 0);
+  lv_obj_align(lblStatus, LV_ALIGN_BOTTOM_LEFT, 8, -8);
+
+  // Memory stats — bottom right
+  lblMemFree = lv_label_create(scr);
+  lv_label_set_text(lblMemFree, "");
+  lv_obj_set_style_text_color(lblMemFree, lv_color_hex(0x3b82f6), 0);
+  lv_obj_set_style_text_font(lblMemFree, &lv_font_montserrat_10, 0);
+  lv_obj_align(lblMemFree, LV_ALIGN_BOTTOM_RIGHT, -8, -20);
+
+  lblMemFrag = lv_label_create(scr);
+  lv_label_set_text(lblMemFrag, "");
+  lv_obj_set_style_text_color(lblMemFrag, lv_color_hex(0x3b82f6), 0);
+  lv_obj_set_style_text_font(lblMemFrag, &lv_font_montserrat_10, 0);
+  lv_obj_align(lblMemFrag, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
 
   // Error overlay — hidden by default, shown when WiFi is down >5m
   pnlError = lv_obj_create(scr);
@@ -390,8 +420,10 @@ static void setErrorState(bool show) {
     lv_obj_add_flag(lblBalance, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(lblStatus, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(barExpected, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lblMemFree, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lblMemFrag, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(pnlError, LV_OBJ_FLAG_HIDDEN);
-    Serial.println("[UI] Error state ON — WiFi down >5m");
+    Serial.println("[UI] Error state ON");
   } else {
     lv_obj_clear_flag(lblCredits, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(lblPercent, LV_OBJ_FLAG_HIDDEN);
@@ -400,10 +432,38 @@ static void setErrorState(bool show) {
     lv_obj_clear_flag(lblBalance, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(lblStatus, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(barExpected, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(lblMemFree, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(lblMemFrag, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(pnlError, LV_OBJ_FLAG_HIDDEN);
-    Serial.println("[UI] Error state OFF — WiFi restored");
+    Serial.println("[UI] Error state OFF");
   }
   forceRedraw();
+}
+
+// ── Heap display update ───────────────────────────────────────────
+static void updateHeapDisplay() {
+  HeapStats stats = getHeapStats();
+  char buf[32];
+
+  // Free heap with color coding
+  snprintf(buf, sizeof(buf), "Free: %uKB", (unsigned)stats.freeKB);
+  lv_label_set_text(lblMemFree, buf);
+  if (stats.freeKB >= 100)
+    lv_obj_set_style_text_color(lblMemFree, lv_color_hex(0x3b82f6), 0);  // blue
+  else if (stats.freeKB >= 50)
+    lv_obj_set_style_text_color(lblMemFree, lv_color_hex(0xf59e0b), 0);  // orange
+  else
+    lv_obj_set_style_text_color(lblMemFree, lv_color_hex(0xef4444), 0);  // red
+
+  // Fragmentation with color coding
+  snprintf(buf, sizeof(buf), "Frag: %.0f%%", stats.fragPct);
+  lv_label_set_text(lblMemFrag, buf);
+  if (stats.fragPct < 30)
+    lv_obj_set_style_text_color(lblMemFrag, lv_color_hex(0x3b82f6), 0);  // blue
+  else if (stats.fragPct < 60)
+    lv_obj_set_style_text_color(lblMemFrag, lv_color_hex(0xf59e0b), 0);  // orange
+  else
+    lv_obj_set_style_text_color(lblMemFrag, lv_color_hex(0xef4444), 0);  // red
 }
 
 // ── Setup ────────────────────────────────────────────────────────
@@ -447,6 +507,7 @@ void setup() {
     // First fetch immediately
     MiMoData d = fetchMiMoData();
     updateUI(d);
+    updateHeapDisplay();
     lastFetch = millis();  // reset loop timer
   }
 }
@@ -463,7 +524,7 @@ void loop() {
     if (downMs >= WIFI_DOWN_TIMEOUT_MS && !errorStateVisible) {
       char detail[64];
       uint32_t downMin = downMs / 60000;
-      snprintf(detail, sizeof(detail), "No connection for %u minutes", (unsigned)downMin);
+      snprintf(detail, sizeof(detail), "No WiFi for %u minutes", (unsigned)downMin);
       lv_label_set_text(lblErrDetail, detail);
       setErrorState(true);
     }
@@ -472,6 +533,14 @@ void loop() {
       wifiDownSince = 0;
       if (errorStateVisible) setErrorState(false);
     }
+  }
+
+  // Also trigger error view on repeated HTTP failures (SSL/memory issues)
+  if (consecutiveFails >= 3 && !errorStateVisible) {
+    char detail[64];
+    snprintf(detail, sizeof(detail), "HTTP errors for %u retries", (unsigned)consecutiveFails);
+    lv_label_set_text(lblErrDetail, detail);
+    setErrorState(true);
   }
 
   uint32_t interval = (consecutiveFails > 0) ? retryDelay : REFRESH_INTERVAL_MS;
@@ -501,6 +570,7 @@ void loop() {
       retryDelay = 0;
       MiMoData d = fetchMiMoData();
       updateUI(d);
+      updateHeapDisplay();
     }
   }
   touchActive = touched;
@@ -525,10 +595,12 @@ void loop() {
 
     MiMoData d = fetchMiMoData();
     updateUI(d);
+    updateHeapDisplay();
 
     if (d.valid) {
       consecutiveFails = 0;
       retryDelay = 0;
+      if (errorStateVisible) setErrorState(false);  // clear error on success
     } else {
       consecutiveFails++;
       uint32_t backoff = 30000 * (1 << min(consecutiveFails - 1, 3));

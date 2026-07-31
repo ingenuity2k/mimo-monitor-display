@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <esp_heap_caps.h>
 #include "config.h"
 
 struct MiMoData {
@@ -19,6 +20,50 @@ struct MiMoData {
   bool valid;
 };
 
+// ── Heap health ───────────────────────────────────────────────────
+struct HeapStats {
+  size_t freeKB;
+  float fragPct;  // 0-100
+};
+
+// Check heap health. Reboots if largest contiguous block < 20KB.
+// Call BEFORE each SSL request.
+void checkHeapHealth() {
+  size_t freeHeap = ESP.getFreeHeap();
+  size_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  float frag = (freeHeap > 0) ? (1.0f - ((float)largestBlock / (float)freeHeap)) * 100.0f : 0.0f;
+
+  Serial.printf("[Heap] Free: %uKB | Largest: %uKB | Frag: %.0f%%\n",
+                freeHeap / 1024, largestBlock / 1024, frag);
+
+  if (largestBlock < 20480) {  // < 20KB
+    Serial.printf("[Heap] CRITICAL — largest block %u bytes, rebooting!\n", largestBlock);
+    delay(100);
+    ESP.restart();
+  }
+}
+
+// Get heap stats for display
+HeapStats getHeapStats() {
+  HeapStats stats;
+  stats.freeKB = ESP.getFreeHeap() / 1024;
+  size_t largestBlock = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+  size_t freeHeap = ESP.getFreeHeap();
+  stats.fragPct = (freeHeap > 0) ? (1.0f - ((float)largestBlock / (float)freeHeap)) * 100.0f : 0.0f;
+  return stats;
+}
+
+// Periodic heap integrity check — coalesces adjacent free blocks
+static int fetchCount = 0;
+void maybeCheckHeapIntegrity() {
+  fetchCount++;
+  if (fetchCount % 10 == 0) {
+    Serial.println("[Heap] Running integrity check (coalesce free blocks)...");
+    heap_caps_check_integrity_all(true);
+  }
+}
+
+// ── Time ──────────────────────────────────────────────────────────
 // Get current time as HH:MM string
 String getTimeHHMM() {
   time_t now;
@@ -30,6 +75,7 @@ String getTimeHHMM() {
   return String(buf);
 }
 
+// ── WiFi ──────────────────────────────────────────────────────────
 // Connect to WiFi, returns true on success
 bool wifiConnect() {
   WiFi.mode(WIFI_STA);
@@ -70,6 +116,7 @@ bool wifiEnsure() {
   return false;
 }
 
+// ── Fetch ─────────────────────────────────────────────────────────
 // Fetch current MiMo data from Supabase
 // Retries up to 3 times on failure. After repeated failures, resets WiFi.
 static int fetchConsecutiveFails = 0;
@@ -89,6 +136,7 @@ MiMoData fetchMiMoData() {
   String payload;
 
   for (int attempt = 1; attempt <= 3; attempt++) {
+    checkHeapHealth();  // reboot if heap too fragmented for SSL
     HTTPClient http;
     http.begin(url);
     http.setConnectTimeout(8000);
@@ -100,6 +148,7 @@ MiMoData fetchMiMoData() {
     if (code == 200) {
       payload = http.getString();
       http.end();
+      maybeCheckHeapIntegrity();
       break;
     }
 
